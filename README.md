@@ -6,7 +6,9 @@ A collection of miscellaneous PowerShell scripts.
 
 | Folder | Description |
 |---|---|
-| [VSCode/](VSCode/) | Tools for recovering and managing GitHub Copilot Chat history in VS Code |
+| [SSH/](SSH/README.md) | SSH configuration and key management |
+| [VSCode/](VSCode/README.md) | VS Code tooling |
+| [Yubikey/](Yubikey/README.md) | YubiKey setup and configuration |
 
 ## License
 
