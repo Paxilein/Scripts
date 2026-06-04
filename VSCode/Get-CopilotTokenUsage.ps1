@@ -190,7 +190,11 @@ Where-Object { $_.FullName -like "*GitHub.copilot-chat*" }
 
 Write-Log "Found $($logFiles.Count) debug log file(s)"
 
+$logFileTotal = $logFiles.Count
+$logFileIndex = 0
+
 foreach ($logFile in $logFiles) {
+  $logFileIndex++
   $storageHash = ($logFile.FullName -replace [regex]::Escape("$storageRoot\"), '').Split('\')[0]
   $workspaceName = if ($workspaceNames[$storageHash]) {
     $workspaceNames[$storageHash]
@@ -198,6 +202,13 @@ foreach ($logFile in $logFiles) {
   else {
     $storageHash.Substring(0, 8)
   }
+
+  Write-Progress -Id 1 -Activity "Scanning Copilot debug logs" `
+    -Status "[$logFileIndex/$logFileTotal] $workspaceName" `
+    -PercentComplete (($logFileIndex / $logFileTotal) * 100)
+
+  Write-Progress -Id 2 -ParentId 1 -Activity "Reading session titles" `
+    -Status "Loading state.vscdb..." -PercentComplete 0
 
   # Build session title lookup: prefer VS Code's auto-generated title from state.vscdb,
   # fall back to first user message text if the DB isn't available or the session isn't listed.
@@ -219,6 +230,9 @@ foreach ($logFile in $logFiles) {
     }
   }
 
+  Write-Progress -Id 2 -ParentId 1 -Activity "Reading session titles" `
+    -Status "Scanning user messages for fallback titles..." -PercentComplete 50
+
   # For any session not found in the DB, fall back to the first user message text
   Get-Content $logFile.FullName | Where-Object { $_ -match '"type":"user_message"' } | ForEach-Object {
     try {
@@ -227,10 +241,10 @@ foreach ($logFile in $logFiles) {
       if (-not $sessionTitles.ContainsKey($sid)) {
         $content = $msgEntry.attrs.content -replace '[\r\n]+', ' '
         $sessionTitles[$sid] = if ($content.Length -gt 55) {
-          $content.Substring(0, 52) + '...' 
+          $content.Substring(0, 52) + '...'
         }
         else {
-          $content 
+          $content
         }
       }
     }
@@ -239,8 +253,17 @@ foreach ($logFile in $logFiles) {
   }
 
   $llmLines = Get-Content $logFile.FullName | Where-Object { $_ -match '"type":"llm_request"' }
+  $llmTotal = $llmLines.Count
+  $llmIndex = 0
+
+  Write-Progress -Id 2 -ParentId 1 -Activity "Processing LLM requests" `
+    -Status "0 / $llmTotal requests" -PercentComplete 0
 
   foreach ($line in $llmLines) {
+    $llmIndex++
+    Write-Progress -Id 2 -ParentId 1 -Activity "Processing LLM requests" `
+      -Status "$llmIndex / $llmTotal requests" `
+      -PercentComplete (($llmIndex / [Math]::Max($llmTotal, 1)) * 100)
     try {
       $entry = $line | ConvertFrom-Json
       $timestamp = [DateTimeOffset]::FromUnixTimeMilliseconds($entry.ts).LocalDateTime
@@ -256,10 +279,10 @@ foreach ($logFile in $logFiles) {
         -CachedTokens  $entry.attrs.cachedTokens
 
       $sessionTitle = if ($sessionTitles[$entry.sid]) {
-        $sessionTitles[$entry.sid] 
+        $sessionTitles[$entry.sid]
       }
       else {
-        $entry.sid.Substring(0, 8) 
+        $entry.sid.Substring(0, 8)
       }
 
       $allRequests.Add([PSCustomObject]@{
@@ -279,6 +302,9 @@ foreach ($logFile in $logFiles) {
     }
   }
 }
+
+Write-Progress -Id 2 -Activity "Processing LLM requests" -Completed
+Write-Progress -Id 1 -Activity "Scanning Copilot debug logs" -Completed
 
 if ($allRequests.Count -eq 0) {
   Write-Log "No LLM requests found. Is debug logging enabled in VS Code?" -Level Warning
