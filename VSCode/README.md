@@ -16,6 +16,49 @@ These scripts fix both problems.
 
 ## Scripts
 
+### `Get-CopilotTokenUsage.ps1`
+
+Scans all VS Code workspace debug logs and reports GitHub Copilot token consumption and estimated credit costs, broken down by workspace and chat session.
+
+**When to use:** You want visibility into how many Copilot credits you're burning, which workspaces are the most expensive, and which sessions are driving the cost.
+
+**Requirements:**
+- Debug logging must be enabled in VS Code settings:
+  ```json
+  "github.copilot.advanced": { "debug.overrideCapabilities": ["debug"] }
+  ```
+- `sqlite3.exe` on your PATH for session title resolution (optional but recommended):
+  ```powershell
+  winget install SQLite.SQLite
+  ```
+
+```powershell
+# Show all usage, sorted by credits (default)
+.\Get-CopilotTokenUsage.ps1
+
+# Sort by workspace name
+.\Get-CopilotTokenUsage.ps1 -SortBy Workspace
+
+# Only show usage since a specific date
+.\Get-CopilotTokenUsage.ps1 -Since (Get-Date).AddDays(-7)
+
+# Export to CSV
+.\Get-CopilotTokenUsage.ps1 -ExportCsv .\copilot-usage.csv
+
+# VS Code Insiders
+.\Get-CopilotTokenUsage.ps1 -Insiders
+```
+
+**Output columns:** Workspace, Session, Requests, TotalInput, TotalOutput, TotalCached, Credits, Cost (USD), FirstSeen, LastSeen.
+
+**Notes:**
+- Credits are calculated per request using the model's specific rate, then aggregated — so mixed-model sessions are costed correctly.
+- Session titles are resolved from VS Code's `state.vscdb` (the display name shown in the chat panel). Falls back to the first user message text if the session has been deleted or `sqlite3` is unavailable.
+- Only logs captured after enabling debug mode are included. Historical usage before that point is not available.
+- Credit rates are based on the GitHub Copilot pricing model as of June 2026.
+
+---
+
 ### `Convert-CopilotChatSessions.ps1`
 
 Converts old `.json` session files to the current `.jsonl` event-log format.
