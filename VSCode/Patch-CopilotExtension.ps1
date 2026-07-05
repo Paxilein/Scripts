@@ -71,8 +71,14 @@ function Write-Log {
 
 #region --- Constants ---
 $githubAttachmentPrefix  = 'https://github.com/github-copilot/chat/attachments/'
-$vscodeBase              = "C:\Users\$env:USERNAME\AppData\Local\Programs\Microsoft VS Code"
-$userExtBase             = "C:\Users\$env:USERNAME\.vscode\extensions"
+$vscodeBases             = @(
+  "C:\Users\$env:USERNAME\AppData\Local\Programs\Microsoft VS Code",
+  "C:\Users\$env:USERNAME\AppData\Local\Programs\Microsoft VS Code Insiders"
+)
+$userExtBases            = @(
+  "C:\Users\$env:USERNAME\.vscode\extensions",
+  "C:\Users\$env:USERNAME\.vscode-insiders\extensions"
+)
 $maxSessionsOld          = 50
 $maxSessionsNew          = 500
 
@@ -92,19 +98,23 @@ function Find-ExtensionJs {
 
   $candidates = @()
 
-  # Built-in extension in VS Code install dir
-  if (Test-Path $vscodeBase) {
-    Get-ChildItem $vscodeBase -Directory | Where-Object { $_.Name -ne 'bin' } | ForEach-Object {
-      $path = Join-Path $_.FullName "resources\app\extensions\copilot\dist\extension.js"
-      if (Test-Path $path) { $candidates += $path }
+  # Built-in extension in VS Code (stable + Insiders) install dirs
+  foreach ($base in $vscodeBases) {
+    if (Test-Path $base) {
+      Get-ChildItem $base -Directory | Where-Object { $_.Name -ne 'bin' } | ForEach-Object {
+        $path = Join-Path $_.FullName "resources\app\extensions\copilot\dist\extension.js"
+        if (Test-Path $path) { $candidates += $path }
+      }
     }
   }
 
-  # User-installed copilot-chat extension
-  if (Test-Path $userExtBase) {
-    Get-ChildItem $userExtBase -Directory | Where-Object { $_.Name -like "github.copilot-chat*" } | ForEach-Object {
-      $path = Join-Path $_.FullName "dist\extension.js"
-      if (Test-Path $path) { $candidates += $path }
+  # User-installed copilot-chat extension (stable + Insiders profiles)
+  foreach ($base in $userExtBases) {
+    if (Test-Path $base) {
+      Get-ChildItem $base -Directory | Where-Object { $_.Name -like "github.copilot-chat*" } | ForEach-Object {
+        $path = Join-Path $_.FullName "dist\extension.js"
+        if (Test-Path $path) { $candidates += $path }
+      }
     }
   }
 
@@ -123,11 +133,14 @@ function Find-WorkbenchJs {
 
   $candidates = @()
 
-  if (Test-Path $vscodeBase) {
-    Get-ChildItem $vscodeBase -Directory | Where-Object { $_.Name -ne 'bin' } | ForEach-Object {
-      # VS Code stores it at: resources\app\out\vs\workbench\workbench.desktop.main.js
-      $path = Join-Path $_.FullName "resources\app\out\vs\workbench\workbench.desktop.main.js"
-      if (Test-Path $path) { $candidates += $path }
+  # VS Code (stable + Insiders) install dirs
+  foreach ($base in $vscodeBases) {
+    if (Test-Path $base) {
+      Get-ChildItem $base -Directory | Where-Object { $_.Name -ne 'bin' } | ForEach-Object {
+        # VS Code stores it at: resources\app\out\vs\workbench\workbench.desktop.main.js
+        $path = Join-Path $_.FullName "resources\app\out\vs\workbench\workbench.desktop.main.js"
+        if (Test-Path $path) { $candidates += $path }
+      }
     }
   }
 
