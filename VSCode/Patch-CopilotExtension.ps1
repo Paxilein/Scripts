@@ -153,6 +153,66 @@ function Find-WorkbenchJs {
 }
 #endregion
 
+#region --- Helper: update product.json checksum after patching ---
+function Update-ProductJsonChecksum {
+  param([string]$PatchedFilePath)
+
+  # Walk up the directory tree from the patched file to find product.json
+  $dir        = Split-Path $PatchedFilePath -Parent
+  $appRoot    = $null
+  $productJsonPath = $null
+  while ($dir -and $dir -ne (Split-Path $dir -Parent)) {
+    $candidate = Join-Path $dir 'product.json'
+    if (Test-Path $candidate) {
+      $productJsonPath = $candidate
+      $appRoot         = $dir
+      break
+    }
+    $dir = Split-Path $dir -Parent
+  }
+
+  if (-not $productJsonPath) {
+    Write-Log "Could not find product.json — VS Code integrity warning will appear." Warning
+    return
+  }
+
+  # Derive the checksum key: path relative to the 'out' subdirectory of the app root,
+  # using forward slashes (VS Code's convention for checksum keys).
+  $outRoot = Join-Path $appRoot 'out'
+  if (-not $PatchedFilePath.StartsWith($outRoot, [StringComparison]::OrdinalIgnoreCase)) {
+    Write-Log "Patched file is not under 'out/' — no checksum entry expected, skipping." Info
+    return
+  }
+  $checksumKey = $PatchedFilePath.Substring($outRoot.Length).TrimStart('\').Replace('\', '/')
+
+  # Confirm the key exists in product.json
+  $productContent = [System.IO.File]::ReadAllText($productJsonPath)
+  if ($productContent -notmatch [regex]::Escape("`"$checksumKey`"")) {
+    Write-Log "Key '$checksumKey' not found in product.json checksums — skipping." Info
+    return
+  }
+
+  # Compute SHA256 → base64 (VS Code's hash format)
+  $sha256     = [System.Security.Cryptography.SHA256]::Create()
+  $fileBytes  = [System.IO.File]::ReadAllBytes($PatchedFilePath)
+  $newHash    = [Convert]::ToBase64String($sha256.ComputeHash($fileBytes))
+  $sha256.Dispose()
+
+  # Replace the old base64 hash value for this key (preserves all other formatting)
+  $pattern    = '("' + [regex]::Escape($checksumKey) + '"\s*:\s*")([A-Za-z0-9+/]+=*)(")'
+  $replacement = "`$1$newHash`$3"
+  $newContent = [regex]::Replace($productContent, $pattern, $replacement)
+
+  if ($newContent -eq $productContent) {
+    Write-Log "Checksum replacement had no effect for '$checksumKey' — skipping." Warning
+    return
+  }
+
+  [System.IO.File]::WriteAllText($productJsonPath, $newContent, [System.Text.Encoding]::UTF8)
+  Write-Log "Updated checksum in product.json for: $checksumKey" Success
+}
+#endregion
+
 #region --- Patch 1: expired image attachment URLs in extension.js ---
 function Invoke-ImageUrlPatch {
   param([string]$TargetPath)
@@ -292,6 +352,7 @@ function Invoke-SessionLimitPatch {
 
   if ($oldGone -and $newThere) {
     Write-Log "Patch 2 applied successfully." Success
+    Update-ProductJsonChecksum -PatchedFilePath $TargetPath
     return $true
   }
   else {
