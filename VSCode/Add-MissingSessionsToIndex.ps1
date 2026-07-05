@@ -87,13 +87,13 @@ function Read-SessionMetadata([string]$jsonlPath) {
         # kind:0 — initial shell; grab creationDate, initialLocation, sessionId
         if ($obj.kind -eq 0 -and $obj.v) {
           if ($obj.v.creationDate) {
-            $meta.creationDate = [long]$obj.v.creationDate 
+            $meta.creationDate = [long]$obj.v.creationDate
           }
           if ($obj.v.initialLocation) {
-            $meta.initialLocation = [string]$obj.v.initialLocation 
+            $meta.initialLocation = [string]$obj.v.initialLocation
           }
           if ($obj.v.sessionId) {
-            $meta.sessionId = [string]$obj.v.sessionId 
+            $meta.sessionId = [string]$obj.v.sessionId
           }
         }
 
@@ -102,21 +102,21 @@ function Read-SessionMetadata([string]$jsonlPath) {
           switch ($obj.k) {
             "customTitle" {
               if ($obj.v) {
-                $meta.title = [string]$obj.v 
-              } 
+                $meta.title = [string]$obj.v
+              }
             }
             "lastMessageDate" {
               if ($obj.v) {
-                $meta.lastMessageDate = [long]$obj.v 
-              } 
+                $meta.lastMessageDate = [long]$obj.v
+              }
             }
             "hasPendingEdits" {
-              $meta.hasPendingEdits = [bool]$obj.v 
+              $meta.hasPendingEdits = [bool]$obj.v
             }
             "initialLocation" {
               if ($obj.v) {
-                $meta.initialLocation = [string]$obj.v 
-              } 
+                $meta.initialLocation = [string]$obj.v
+              }
             }
           }
         }
@@ -127,7 +127,7 @@ function Read-SessionMetadata([string]$jsonlPath) {
           $req = $obj.v
           # Grab timing if available
           if ($req.timestamp) {
-            $meta.timingLastStart = [long]$req.timestamp 
+            $meta.timingLastStart = [long]$req.timestamp
           }
           if ($req.response -and $req.response.timings -and $req.response.timings.firstProgress) {
             $meta.timingLastEnd = [long]$req.response.timings.firstProgress
@@ -146,10 +146,10 @@ function Read-SessionMetadata([string]$jsonlPath) {
 
   # Fallbacks
   if ($meta.creationDate -eq 0) {
-    $meta.creationDate = $meta.timingCreated 
+    $meta.creationDate = $meta.timingCreated
   }
   if ($meta.timingCreated -eq 0) {
-    $meta.timingCreated = $meta.creationDate 
+    $meta.timingCreated = $meta.creationDate
   }
   if ($meta.lastMessageDate -eq 0 -and $meta.timingLastStart -gt 0) {
     $meta.lastMessageDate = $meta.timingLastStart
@@ -160,13 +160,13 @@ function Read-SessionMetadata([string]$jsonlPath) {
           - [datetime]'1970-01-01').TotalMilliseconds)
   }
   if ($meta.timingCreated -eq 0) {
-    $meta.timingCreated = $meta.lastMessageDate 
+    $meta.timingCreated = $meta.lastMessageDate
   }
   if ($meta.timingLastStart -eq 0) {
-    $meta.timingLastStart = $meta.lastMessageDate 
+    $meta.timingLastStart = $meta.lastMessageDate
   }
   if ($meta.timingLastEnd -eq 0) {
-    $meta.timingLastEnd = $meta.lastMessageDate 
+    $meta.timingLastEnd = $meta.lastMessageDate
   }
 
   return $meta
@@ -244,16 +244,17 @@ foreach ($hash in $hashes) {
     $added++
   }
 
-  # Write back
+  # Write back — pipe SQL via stdin to avoid Windows command-line length limits
+  # with large session indexes.
   $newJson = $index | ConvertTo-Json -Depth 10 -Compress
   $escaped = $newJson -replace "'", "''"
 
   $exists = sqlite3 $dbPath "SELECT COUNT(*) FROM ItemTable WHERE key = '$dbKey';"
   if ([int]$exists -gt 0) {
-    sqlite3 $dbPath "UPDATE ItemTable SET value = '$escaped' WHERE key = '$dbKey';"
+    "UPDATE ItemTable SET value = '$escaped' WHERE key = '$dbKey';" | sqlite3 $dbPath
   }
   else {
-    sqlite3 $dbPath "INSERT INTO ItemTable (key, value) VALUES ('$dbKey', '$escaped');"
+    "INSERT INTO ItemTable (key, value) VALUES ('$dbKey', '$escaped');" | sqlite3 $dbPath
   }
 
   Write-Host "[$hash] Added $added missing entries (total now: $(($index.entries.PSObject.Properties | Measure-Object).Count))"
